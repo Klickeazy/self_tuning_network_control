@@ -2,27 +2,28 @@ import numpy as np
 import networkx as netx
 from copy import deepcopy as dc
 import pickle
+import warnings
 
-import matplotlib
-import matplotlib.pyplot as plt
-# import matplotlib.ticker as ticker
-from matplotlib.gridspec import GridSpec
-from matplotlib.ticker import MaxNLocator
-
-matplotlib.rcParams['axes.titlesize'] = 12
-matplotlib.rcParams['xtick.labelsize'] = 12
-matplotlib.rcParams['ytick.labelsize'] = 12
-matplotlib.rcParams['axes.labelsize'] = 12
-matplotlib.rcParams['legend.fontsize'] = 10
-matplotlib.rcParams['legend.title_fontsize'] = 10
-matplotlib.rcParams['legend.framealpha'] = 0.5
-matplotlib.rcParams['lines.markersize'] = 5
-# matplotlib.rcParams['image.cmap'] = 'Blues'
-matplotlib.rcParams['pdf.fonttype'] = 42
-matplotlib.rcParams['ps.fonttype'] = 42
-matplotlib.rcParams['text.usetex'] = True
-matplotlib.rcParams['savefig.bbox'] = 'tight'
-matplotlib.rcParams['savefig.format'] = 'pdf'
+# import matplotlib
+# import matplotlib.pyplot as plt
+# # import matplotlib.ticker as ticker
+# from matplotlib.gridspec import GridSpec
+# from matplotlib.ticker import MaxNLocator
+#
+# matplotlib.rcParams['axes.titlesize'] = 12
+# matplotlib.rcParams['xtick.labelsize'] = 12
+# matplotlib.rcParams['ytick.labelsize'] = 12
+# matplotlib.rcParams['axes.labelsize'] = 12
+# matplotlib.rcParams['legend.fontsize'] = 10
+# matplotlib.rcParams['legend.title_fontsize'] = 10
+# matplotlib.rcParams['legend.framealpha'] = 0.5
+# matplotlib.rcParams['lines.markersize'] = 5
+# # matplotlib.rcParams['image.cmap'] = 'Blues'
+# matplotlib.rcParams['pdf.fonttype'] = 42
+# matplotlib.rcParams['ps.fonttype'] = 42
+# matplotlib.rcParams['text.usetex'] = True
+# matplotlib.rcParams['savefig.bbox'] = 'tight'
+# matplotlib.rcParams['savefig.format'] = 'pdf'
 
 
 def system_package1(A_in=None, B_in=None, X0_in=None, W_in=None, Q_in=None, R_in=None, system_label=None):
@@ -37,7 +38,6 @@ def system_package1(A_in=None, B_in=None, X0_in=None, W_in=None, Q_in=None, R_in
 
     X0 = dc(X0_in)
     if X0 is None:
-        X0 = np.zeros(nx)
         metric_fn = metric0
         # no initial state => eigmax(P0)
     elif np.ndim(X0) == 1:
@@ -45,11 +45,15 @@ def system_package1(A_in=None, B_in=None, X0_in=None, W_in=None, Q_in=None, R_in
         # metric = 1 => initial state vector => x0 * P0 * x0
     elif np.ndim(X0) == 2:
         metric_fn = metric2
-        # metric = 2 => covariance of zero-mean inital state distribution => trace(P0 * X0)
+        # metric = 2 => covariance of zero-mean initial state distribution => trace(P0 * X0)
     else:
         raise Exception('Check initial conditions X0 - affects cost metrics function')
 
-    W = dc(W_in)
+    if W_in is None:
+        W = np.zeros_like(A)
+    else:
+        W = dc(W_in)
+
     # covariance of zero-mean additive disturbance - set to matrix of 0s for no additive disturbance
 
     Q = dc(Q_in)
@@ -62,7 +66,79 @@ def system_package1(A_in=None, B_in=None, X0_in=None, W_in=None, Q_in=None, R_in
     system_name = dc(system_label)
 
     system = {'A': A, 'B': B, 'X0': X0, 'W': W, 'Q': Q, 'R': R, 'name': system_name, 'cost_metric': metric_fn, 'sys_type': 1}
-    return_values = {'System': system}
+    return system
+
+
+####################################################
+
+
+def create_graph(nx_in, graph_type='cycle', p=None, self_loop=True):
+    if graph_type not in ['cycle', 'path', 'ER', 'BA']:
+        raise Exception('Check network type')
+
+    nx = dc(nx_in)
+    net_check = True
+
+    G = None
+    while net_check:
+        if graph_type == 'cycle':
+            G = netx.generators.classic.cycle_graph(nx)
+        elif graph_type == 'path':
+            G = netx.generators.classic.path_graph(nx)
+        elif graph_type == 'ER':
+            if p is None:
+                print('Specify edge probability for ER-graph')
+                return None
+            else:
+                G = netx.generators.random_graphs.erdos_renyi_graph(nx, p)
+        elif graph_type == 'BA':
+            if p is None:
+                print('Specify initial network size for BA-graph')
+                return None
+            else:
+                G = netx.generators.random_graphs.barabasi_albert_graph(nx, p)
+
+        if netx.algorithms.components.is_connected(G):
+            net_check = False
+
+    if G is None:
+        print('Error: Check graph generator')
+        return None
+
+    Adj = netx.to_numpy_array(G)
+    if self_loop:
+        Adj += np.identity(nx)
+
+    e = np.max(np.abs(np.linalg.eigvals(Adj)))
+    A = Adj / e
+
+    return_values = {'A': A, 'eig_max': e, 'Adj': Adj}
+    return return_values
+
+
+#####################################################
+
+
+def list_to_matrix(B_list, nx):
+    B_matrix = np.zeros((nx, nx))
+    B_list = B_list.astype(np.int64)
+    for i in range(0, len(B_list)):
+        B_matrix[B_list[i], i] = 1
+    return_vals = {'matrix': B_matrix, 'list': B_list}
+    return return_vals
+
+
+####################################################
+
+
+def matrix_to_list(B):
+    B_list = []
+    for i in range(0, np.shape(B)[0]):
+        if np.max(B[:, i]):
+            B_list.append(np.argmax(B[:, i]))
+    S_list = np.array(B_list)
+
+    return_values = {'matrix': B, 'list': S_list}
     return return_values
 
 
@@ -71,26 +147,17 @@ def system_package1(A_in=None, B_in=None, X0_in=None, W_in=None, Q_in=None, R_in
 
 def metric0(P_in, sys_in):
     # Metric for no initial state data => worst case cost over unit circle distribution of initial states
-    J = np.max(np.linalg.eigvals(P_in))
-
-    return_vals = {'J': J}
-    return return_vals
+    return np.max(np.linalg.eigvals(P_in))
 
 
 def metric1(P_in, sys_in):
     # Metric for initial state vector => cost for given initial state vector
-    J = sys_in['X0'].T @ P_in @ sys_in['X0']
-
-    return_vals = {'J': J}
-    return return_vals
+    return sys_in['X0'].T @ P_in @ sys_in['X0']
 
 
 def metric2(P_in, sys_in):
     # Metric for covariance of zero-mean initial state distribution => trace of cost scaled with covariance
-    J = np.trace(P_in @ sys_in['X0'])
-
-    return_vals = {'J': J}
-    return return_vals
+    return np.trace(P_in @ sys_in['X0'])
 
 
 #####################################
@@ -122,6 +189,22 @@ def matrix_convergence_check(A, B, accuracy, check_type=None):
         return np.allclose(A, B, a_tol=accuracy)
     elif check_type in np_norm_methods and accuracy is not None:
         return np.norm(A-B, ord=check_type) < accuracy
+    return None
+
+
+#####################################
+
+
+def is_pos_def(A):
+    if np.array_equal(A, A.T):
+        try:
+            np.linalg.cholesky(A)
+            return True
+        except np.linalg.LinAlgError:
+            warnings.warn('Symmetry fail for positive definite matrix check', stacklevel=4)
+            return False
+    else:
+        return False
 
 
 #####################################
@@ -144,13 +227,12 @@ def recursion_lqr_1step(P_t1, Sys_in):
 #####################################
 
 
-def solve_discreteLQR(sys_in=None, solve_constraints_in=None, cost_fn=recursion_lqr_1step):
+def solve_cost_recursion(sys_in=None, solve_constraints=solve_constraints_initializer(), cost_fn=recursion_lqr_1step):
 
-    if solve_constraints_in is None:
-        solve_constraints = solve_constraints_initializer()
-    else:
-        solve_constraints = dc(solve_constraints_in)
-
+    # if solve_constraints_in is None:
+    #     solve_constraints = solve_constraints_initializer()
+    # else:
+    #     solve_constraints = dc(solve_constraints_in)
 
     Sys = dc(sys_in)
 
@@ -163,28 +245,25 @@ def solve_discreteLQR(sys_in=None, solve_constraints_in=None, cost_fn=recursion_
     if np.shape(A)[1] != np.shape(Q)[0]:
         raise Exception('Check A vs Q dimensions - number of states do not match')
     if np.shape(B)[1] != np.shape(R)[0]:
-        raise Exception('ERROR: check B vs R dimensions - number of inputs')
+        raise Exception('Check B vs R dimensions - number of inputs do not match')
 
     P = dc(Q)
     P_check = 0
+    K = np.zeros_like(A)
 
     t_steps = 0
     while not P_check:  # P_check = 0 for recursion to continue, 1 for successful exit, 2 for failure exit
 
-        try:
-            rec_calc = cost_fn(P, Sys)
-        except:
-            raise Exception('Cost calculation issue')
-
-        t_steps += 1
-
+        rec_calc = cost_fn(P, Sys)
         P_t = rec_calc['P']
+        K_t = rec_calc['K']
+
         if solve_constraints['J_max'] is not None and Sys['cost_metric'](P_t, Sys) > solve_constraints['J_max']:
             # Exceeding design cost bounds
             P_check = 2
+            K = K_t
             break
-
-        if solve_constraints['J_max'] is None and matrix_convergence_check(P_t, P, solve_constraints['P_accuracy'], None):
+        elif solve_constraints['J_max'] is None and matrix_convergence_check(P_t, P, solve_constraints['P_accuracy'], None):
             # Convergence of cost function
             P_check = 1
             break
@@ -198,21 +277,144 @@ def solve_discreteLQR(sys_in=None, solve_constraints_in=None, cost_fn=recursion_
                 P_check = 2
                 break
 
-        if np.min(np.linalg.eigvals(P_t)) < 0:
-            # Cost matrix has negative eigenvalues - this should not happen
-            raise Exception('Cost is not positive semi-definite')
+        if is_pos_def(P_t) < 0:
+            # Sanity check for cost matrix with negative eigenvalues - this should not happen
+            raise Exception('Cost is not positive definite')
 
         P = dc(P_t)
+        t_steps += 1
+
+    return_values = {'J': None, 't_steps': None, 'K': None}
+    if P_check == 1:  # Successful control with costs within J_max over T_max or converged costs in t_steps < T_max
+        return_values['J'] = Sys['cost_metric'](P, Sys)
+        return_values['t_steps'] = t_steps
+    elif P_check == 2:  # Failed control
+        if solve_constraints['J_max'] is not None:  # finite horizon: cost metric at t_steps < T_max exceeds J_max
+            return_values['J'] = solve_constraints['J_max']
+            return_values['t_steps'] = t_steps
+        else:  # infinite horizon: cost metric has not converged within the time horizon
+            return_values['J'] = np.inf
+            return_values['t_steps'] = t_steps
+
+    return return_values
+
+
+#####################################
+
+
+def random_selection(S, n, p=None):
+    #  Choose n from set S randomly with
+    S_choice = np.random.default_rng().choice(S, n, False, p)
+    return S_choice
+
+
+#####################################
+
+
+def greedy_actuator_selection(Sys_in, S=None, solve_constraints=solve_constraints_initializer(), cost_fn=recursion_lqr_1step):
+    #  Select actuators for Sys under a cardinality constraint K
+    Sys = dc(Sys_in)
+
+    Sys['B'] = np.zeros_like(Sys['A'])
+    nx = np.shape(Sys['A'])[0]
+
+    # if solve_constraints_in is None:
+    #     solve_constraints = solve_constraints_initializer()
+    # else:
+    #     solve_constraints = dc(solve_constraints_in)
+
+    if 'S' not in Sys or Sys['S'] is None:
+        Sys['S'] = nx
+
+    B_list = np.arange(0, nx)
+    J_rec = np.zeros(S)
+    t_rec = np.zeros(S)
+    for i in range(0, S):
+        # print('Step:', i)
+        # print('B_list:', B_list)
+        J_test = np.zeros(len(B_list))
+        t_test = np.zeros(len(B_list))
+        for j in range(0, len(B_list)):
+            Sys_test = dc(Sys)
+            Sys_test['B'] = list_to_matrix(np.append(matrix_to_list(Sys_test['B'])['list'], B_list[j]), nx)['matrix']
+            solve_test = solve_cost_recursion(Sys_test, solve_constraints, cost_fn)
+            J_test[j] = dc(solve_test['J'])
+            t_test[j] = dc(solve_test['t_steps'])
+
+        greedy_s = np.argmin(J_test)
+        if (solve_constraints['J_max'] is not None and J_test[greedy_s] == solve_constraints['J_max']) or np.isinf(J_test[greedy_s]):
+            greedy_s = np.argmax(t_test)
+        J_rec[i] = J_test[greedy_s]
+        t_rec[i] = t_test[greedy_s]
+
+        # print('s:', B_list[greedy_s])
+        # print('J:', J_test)
+        # print('t:', t_test)
+        Sys['B'] = list_to_matrix(np.append(matrix_to_list(Sys['B'])['list'], B_list[greedy_s]), nx)['matrix']
+        B_list = np.delete(B_list, greedy_s)
+
+    return_values = {'J': J_rec, 't': t_rec, 'System': Sys}
+    return return_values
+
+
+#######################################################
+
+
+def simulation_conditions_initializer(Sys_in):
+
+    Sys = dc(Sys_in)
+    nx = np.shape(Sys['A'])[0]
+
+    # T_sim = Length of simulation
+    T_sim = 100
+
+    # Disturbances
+    W_sim = np.random.default_rng().normal(np.zeros(nx), Sys['W'], (nx, T_sim))
+
+    # Initial state
+    if Sys['X0'] is None:
+        x0 = 10*np.random.rand(nx,1)
+    elif np.ndim(Sys['X0']) == 1:
+        x0 = dc(Sys['X0'])
+    elif np.ndim(Sys['X0']) == 2:
+        x0 = np.random.default_rng().normal(np.zeros(nx), Sys['X0'])
+    else:
+        raise Exception('Check initial state vector conditions for simulation')
+
+    return_values = {'T_sim': T_sim, 'W_sim': W_sim, 'x0': x0}
+    return return_values
+
+
+#######################################################
+
+
+def simulate_system(Sys_in, K_type=None):
+
+    Sys = dc(Sys_in)
+
+    simulation_conditions = simulation_conditions_initializer(Sys)
+    if K_type == 1:
+        solve_constraints = solve_constraints_initializer()
+
+    x_trajectory = np.zeros((np.shape(Sys['A'])[0]))
+
+    for t in range(0, simulation_conditions['T_sim']):
+
+        if K_type is None:  # Fixed gain
+            K = dc(Sys['K'])
+        elif K_type == 1:  # Run-time gain evaluation
+            K = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
+        elif K_type == 2:  # Run-time actuator set evaluation + gains
+            Sys = greedy_actuator_selection(Sys, Sys_in['S'], solve_constraints, recursion_lqr_1step)['System']
+            K = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
+
+        ## NEED TO FIGURE OUT HOW TO GET DIFFERENT Ks (gains) from COST FN
 
 
 
 
 
-
-
-
-
-
+#######################################################
 
 
 if __name__ == '__main__':

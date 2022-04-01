@@ -211,6 +211,7 @@ function [Bk, Kk] = greedy(A, Bset, Q, x, k)
         end
 
         [Jstar, istar] = min(J);
+        Jstar
 
         Sstar = [Sstar S(istar)];
 
