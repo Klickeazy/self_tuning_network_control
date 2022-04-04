@@ -163,7 +163,7 @@ def metric2(P_in, sys_in):
 #####################################
 
 
-def solve_constraints_initializer():
+def solve_constraints_initializer(Sys_in=None):
 
     # Maximum cost metric bound - set None to look for convergence rather than
     J_max = 10**8
@@ -174,7 +174,31 @@ def solve_constraints_initializer():
     # Time horizon of simulation/recursion
     T_max = 200
 
-    return_values = {'J_max': J_max, 'T_max': T_max, 'P_accuracy': P_accuracy}
+    if Sys_in is not None:
+        Sys = dc(Sys_in)
+        nx = np.shape(Sys['A'])[0]
+
+        # T_sim = Length of simulation
+        T_sim = 100
+
+        # Disturbances
+        W_sim = np.random.default_rng().normal(np.zeros(nx), Sys['W'], (nx, T_sim))
+
+        # Initial state
+        if Sys['X0'] is None:
+            x0 = 10 * np.random.rand(nx, 1)
+        elif np.ndim(Sys['X0']) == 1:
+            x0 = dc(Sys['X0'])
+        elif np.ndim(Sys['X0']) == 2:
+            x0 = np.random.default_rng().normal(np.zeros(nx), Sys['X0'])
+        else:
+            raise Exception('Check initial state vector conditions for simulation')
+    else:
+        T_sim = None
+        W_sim = None
+        x0 = None
+
+    return_values = {'J_max': J_max, 'T_max': T_max, 'P_accuracy': P_accuracy, 'T_sim': T_sim, 'W_sim': W_sim, 'x0': x0}
     return return_values
 
 
@@ -249,7 +273,8 @@ def solve_cost_recursion(sys_in=None, solve_constraints=solve_constraints_initia
 
     P = dc(Q)
     P_check = 0
-    K = np.zeros_like(A)
+    K_0 = None
+    K_t = None
 
     t_steps = 0
     while not P_check:  # P_check = 0 for recursion to continue, 1 for successful exit, 2 for failure exit
@@ -258,10 +283,12 @@ def solve_cost_recursion(sys_in=None, solve_constraints=solve_constraints_initia
         P_t = rec_calc['P']
         K_t = rec_calc['K']
 
+        if t_steps == 0:
+            K_0 = dc(K_t)
+
         if solve_constraints['J_max'] is not None and Sys['cost_metric'](P_t, Sys) > solve_constraints['J_max']:
             # Exceeding design cost bounds
             P_check = 2
-            K = K_t
             break
         elif solve_constraints['J_max'] is None and matrix_convergence_check(P_t, P, solve_constraints['P_accuracy'], None):
             # Convergence of cost function
@@ -284,17 +311,14 @@ def solve_cost_recursion(sys_in=None, solve_constraints=solve_constraints_initia
         P = dc(P_t)
         t_steps += 1
 
-    return_values = {'J': None, 't_steps': None, 'K': None}
+    return_values = {'J': None, 't_steps': t_steps, 'K_0': K_0, 'K_t': K_t, 'P_check': P_check}
     if P_check == 1:  # Successful control with costs within J_max over T_max or converged costs in t_steps < T_max
         return_values['J'] = Sys['cost_metric'](P, Sys)
-        return_values['t_steps'] = t_steps
     elif P_check == 2:  # Failed control
         if solve_constraints['J_max'] is not None:  # finite horizon: cost metric at t_steps < T_max exceeds J_max
             return_values['J'] = solve_constraints['J_max']
-            return_values['t_steps'] = t_steps
         else:  # infinite horizon: cost metric has not converged within the time horizon
             return_values['J'] = np.inf
-            return_values['t_steps'] = t_steps
 
     return return_values
 
@@ -360,55 +384,39 @@ def greedy_actuator_selection(Sys_in, S=None, solve_constraints=solve_constraint
 #######################################################
 
 
-def simulation_conditions_initializer(Sys_in):
-
-    Sys = dc(Sys_in)
-    nx = np.shape(Sys['A'])[0]
-
-    # T_sim = Length of simulation
-    T_sim = 100
-
-    # Disturbances
-    W_sim = np.random.default_rng().normal(np.zeros(nx), Sys['W'], (nx, T_sim))
-
-    # Initial state
-    if Sys['X0'] is None:
-        x0 = 10*np.random.rand(nx,1)
-    elif np.ndim(Sys['X0']) == 1:
-        x0 = dc(Sys['X0'])
-    elif np.ndim(Sys['X0']) == 2:
-        x0 = np.random.default_rng().normal(np.zeros(nx), Sys['X0'])
-    else:
-        raise Exception('Check initial state vector conditions for simulation')
-
-    return_values = {'T_sim': T_sim, 'W_sim': W_sim, 'x0': x0}
-    return return_values
-
-
-#######################################################
-
-
-def simulate_system(Sys_in, K_type=None):
+def simulate_system(Sys_in, K_type=1):
 
     Sys = dc(Sys_in)
 
-    simulation_conditions = simulation_conditions_initializer(Sys)
-    if K_type == 1:
-        solve_constraints = solve_constraints_initializer()
+    solve_constraints = solve_constraints_initializer(Sys)
 
     x_trajectory = np.zeros((np.shape(Sys['A'])[0]))
+    x_trajectory[:, 1] = dc(solve_constraints['x0'])
 
-    for t in range(0, simulation_conditions['T_sim']):
+    if K_type not in [1, 2, 3]:
+        raise Exception('Pick suitable gain type/test model')
 
-        if K_type is None:  # Fixed gain
-            K = dc(Sys['K'])
-        elif K_type == 1:  # Run-time gain evaluation
-            K = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
-        elif K_type == 2:  # Run-time actuator set evaluation + gains
+    if K_type == 1:  # Fixed random actuators, Fixed gain
+        nx = Sys['A']
+        B = list_to_matrix(random_selection(np.arange(0, nx), 5), nx)['matrix']
+        cost_solver = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
+        K = cost_solver['K_t']
+        if cost_solver['P_check'] != 1:
+            warnings.warn('Gain does guarantee finite costs or feasible control')
+    if K_type == 2:  # Fixed actuator, Fixed gain
+        Sys = greedy_actuator_selection(Sys, Sys_in['S'], solve_constraints, recursion_lqr_1step)['System']
+
+    for t in range(0, solve_constraints['T_sim']):
+        if K_type == 3:  # Run-time actuator set evaluation + gains
             Sys = greedy_actuator_selection(Sys, Sys_in['S'], solve_constraints, recursion_lqr_1step)['System']
-            K = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
 
-        ## NEED TO FIGURE OUT HOW TO GET DIFFERENT Ks (gains) from COST FN
+        if K_type == 2 or K_type == 3:  # Fixed greedy actuator, Run-time gain evaluation
+            cost_solver = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
+            K = cost_solver['K_0']
+            if cost_solver['P_check'] != 1:
+                warnings.warn('Gain does guarantee finite costs or feasible control')
+
+
 
 
 
