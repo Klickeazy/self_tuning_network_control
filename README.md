@@ -25,4 +25,4 @@ Additive disturbances randomly sampled from zero-mean normal distribution with s
 
 <img src="images/Plt_traj_1.png">
 
-[//]: # (<img src="images/Pl.png">)
+<img src="images/Plt_traj_4.png">

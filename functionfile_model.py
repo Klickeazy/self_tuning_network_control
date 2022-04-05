@@ -143,7 +143,7 @@ def matrix_to_list(B):
     for i in range(0, np.shape(B)[0]):
         if np.max(B[:, i]):
             B_list.append(np.argmax(B[:, i]))
-            B_vector[np.argmax(B[:, i])] = np.argmax(B[:, i])
+            B_vector[np.argmax(B[:, i])] = 1+np.argmax(B[:, i])
     S_list = np.array(B_list)
 
     return_values = {'matrix': B, 'list': S_list, 'vector': B_vector}
@@ -445,7 +445,7 @@ def simulate_system(Sys_in, K_type=1, solve_constraints=None):
         return_values['label'] = 'Run-time greedy actuators and gain with state information'
 
     if K_type == 1:  # Design-time random actuators and gain
-        Sys['B'] = list_to_matrix(random_selection(np.arange(0, nx), 5), nx)['matrix']
+        Sys['B'] = list_to_matrix(random_selection(np.arange(0, nx), Sys['S']), nx)['matrix']
         cost_solver = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
         K = cost_solver['K_t']
         if cost_solver['P_check'] != 1:
@@ -461,7 +461,7 @@ def simulate_system(Sys_in, K_type=1, solve_constraints=None):
             if K_type == 4:  # Run-time state information update
                 Sys['X0'] = dc(x_trajectory[:, t])
                 Sys['cost_metric'] = metric1
-            Sys = dc(greedy_actuator_selection(Sys, Sys_in['S'], solve_constraints, recursion_lqr_1step)['System'])
+            Sys = dc(greedy_actuator_selection(Sys, Sys['S'], solve_constraints, recursion_lqr_1step)['System'])
             warning_trajectory[t] = 0
 
         if K_type in [2, 3, 4]:  # run-time gain evaluation
@@ -479,9 +479,11 @@ def simulate_system(Sys_in, K_type=1, solve_constraints=None):
 
         x_trajectory[:, t+1] = dc(update_results['x1'])
         u_trajectory[:, t] = dc(update_results['u0'])
-        J_trajectory[t+1] = dc(update_results['J0'])+J_trajectory[t]
+        J_trajectory[t] = dc(update_results['J0'])
+        if t > 0:
+            J_trajectory[t] += J_trajectory[t-1]
         B_trajectory[:, t] = dc(matrix_to_list(Sys['B'])['vector'])
-
+    J_trajectory[-1] = (x_trajectory[:, -1].T @ Sys['Q'] @ x_trajectory[:, -1]) + J_trajectory[-2]
     return_values = return_values | {'x': x_trajectory, 'u': u_trajectory, 'B': B_trajectory, 'J': J_trajectory, 'check': warning_trajectory, 'T_sim': solve_constraints['T_sim']}
     return return_values
 
@@ -507,7 +509,7 @@ def plot_trajectory(data):
     data['B'][data['B'] == 0] = np.nan
     ax3 = fig1.add_subplot(gs1[2, 0])
     for i in range(0, data['nx']):
-        ax3.plot(np.arange(0, data['T_sim']), data['B'][i, :])
+        ax3.scatter(np.arange(0, data['T_sim']), data['B'][i, :])
     ax3.set_title('Actuator positions')
 
     # ax4 = fig1.add_subplot(gs1[3, 0])
@@ -527,28 +529,28 @@ def plot_trajectory(data):
 
 def plot_trajectory_comparisons(data):
 
-    # Input trajectory data pre-processing for display
-    for k1 in data:
-        data[k1]['u'][data[k1]['u'] == 0] = np.nan
-        data[k1]['B'][data[k1]['B'] == 0] = np.nan
-
-    c_list = ['C0', 'C1', 'C2', 'C3']
-
-    figJ = plt.figure(tight_layout=True)
-    gsJ = GridSpec(1, 1, figure=figJ)
-
-    ax1 = figJ.add_subplot(gsJ[0, 0])
     ptitle = ' | '
     fname = ''
 
+    # Input trajectory data for display
     for k in data:
+        plot_trajectory(data[k])
         ptitle += str(data[k]['K_type']) + ' | '
         fname += str(data[k]['K_type'])
 
-        ax1.plot(np.arange(0, data['T_sim'] + 1), data['J'], label='Type: ' + str(data[k]['K_type']), color=c_list[k])
-        ax1.set_title('Cost')
+    c_list = ['C0', 'C1', 'C2', 'C3']
 
-        plot_trajectory(data[k])
+    # Cost trajectories
+    figJ = plt.figure(tight_layout=True)
+    gsJ = GridSpec(1, 1, figure=figJ)
+
+    axJ = figJ.add_subplot(gsJ[0, 0])
+
+    for k in data:
+        axJ.plot(np.arange(0, data[k]['T_sim'] + 1), data[k]['J'], label='Type: ' + str(data[k]['K_type']))
+
+    axJ.set_title('Cost')
+    axJ.legend()
 
     plt.suptitle(ptitle)
     plt.savefig('images/Plt_J' + fname + '.pdf')
