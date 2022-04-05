@@ -4,10 +4,10 @@ from copy import deepcopy as dc
 import pickle
 import warnings
 
-# import matplotlib
-# import matplotlib.pyplot as plt
+import matplotlib
+import matplotlib.pyplot as plt
 # # import matplotlib.ticker as ticker
-# from matplotlib.gridspec import GridSpec
+from matplotlib.gridspec import GridSpec
 # from matplotlib.ticker import MaxNLocator
 #
 # matplotlib.rcParams['axes.titlesize'] = 12
@@ -26,14 +26,20 @@ import warnings
 # matplotlib.rcParams['savefig.format'] = 'pdf'
 
 
-def system_package1(A_in=None, B_in=None, X0_in=None, W_in=None, Q_in=None, R_in=None, system_label=None):
+def system_package1(A_in=None, B_in=None, S_in=None, X0_in=None, W_in=None, Q_in=None, R_in=None, system_label=None):
 
     A = dc(A_in)
     nx = np.shape(A)[0]
 
+    # S: cardinality constraint on the actuator set
+    if S_in is None:
+        S = nx // 2
+    else:
+        S = dc(S_in)
+
     B = dc(B_in)
     if B is None:
-        B = np.zeros_like(A)
+        B = list_to_matrix(random_selection(np.arange(0, nx), S), nx)['matrix']
     nu = np.shape(B)[1]
 
     X0 = dc(X0_in)
@@ -65,7 +71,7 @@ def system_package1(A_in=None, B_in=None, X0_in=None, W_in=None, Q_in=None, R_in
 
     system_name = dc(system_label)
 
-    system = {'A': A, 'B': B, 'X0': X0, 'W': W, 'Q': Q, 'R': R, 'name': system_name, 'cost_metric': metric_fn, 'sys_type': 1}
+    system = {'A': A, 'B': B, 'S': S, 'X0': X0, 'W': W, 'Q': Q, 'R': R, 'name': system_name, 'cost_metric': metric_fn, 'sys_type': 1}
     return system
 
 
@@ -172,7 +178,7 @@ def solve_constraints_initializer(Sys_in=None):
     P_accuracy = 10**(-4)
 
     # Time horizon of simulation/recursion
-    T_max = 200
+    T_max = 100
 
     if Sys_in is not None:
         Sys = dc(Sys_in)
@@ -182,7 +188,8 @@ def solve_constraints_initializer(Sys_in=None):
         T_sim = 100
 
         # Disturbances
-        W_sim = np.random.default_rng().normal(np.zeros(nx), Sys['W'], (nx, T_sim))
+
+        W_sim = np.random.default_rng().multivariate_normal(np.zeros(nx), Sys['W'], T_sim)
 
         # Initial state
         if Sys['X0'] is None:
@@ -384,43 +391,121 @@ def greedy_actuator_selection(Sys_in, S=None, solve_constraints=solve_constraint
 #######################################################
 
 
-def simulate_system(Sys_in, K_type=1):
+def lqr_dynamics_cost_update(Sys, x0, K, sim_noise=None):
+
+    u0 = K@x0
+    if sim_noise is None or sim_noise['w'] is None:
+        w = np.zeros(np.shape(Sys['A'])[0])
+    else:
+        w = dc(sim_noise['w'])
+    # print(np.shape(Sys['A']@x0))
+    # print(np.shape(Sys['B']@u0))
+    # print(np.shape(w))
+    x1 = Sys['A']@x0 + Sys['B']@u0 + w
+
+    J0 = x0.T@Sys['Q']@x0 + u0@Sys['R']@u0
+
+    return_values = {'u0': u0, 'x1': x1, 'J0': J0}
+    return return_values
+
+#######################################################
+
+
+def simulate_system(Sys_in, K_type=1, solve_constraints=None):
+
+    return_values = {}
 
     Sys = dc(Sys_in)
+    nx = np.shape(Sys['A'])[0]
+    return_values['nx'] = dc(nx)
 
-    solve_constraints = solve_constraints_initializer(Sys)
+    if solve_constraints is None:
+        solve_constraints = solve_constraints_initializer(Sys)
 
-    x_trajectory = np.zeros((np.shape(Sys['A'])[0]))
-    x_trajectory[:, 1] = dc(solve_constraints['x0'])
+    x_trajectory = np.zeros((nx, solve_constraints['T_sim']+1))
+    x_trajectory[:, 0] = dc(solve_constraints['x0'])
 
-    if K_type not in [1, 2, 3]:
+    u_trajectory = np.zeros((nx, solve_constraints['T_sim']))
+    J_trajectory = np.zeros(solve_constraints['T_sim']+1)
+    warning_trajectory = np.ones(solve_constraints['T_sim']+1)
+    # records 1 for no warnings or 0 if gain/actuator set is not feasible/bounded
+
+    if K_type not in [1, 2, 3, 4]:
         raise Exception('Pick suitable gain type/test model')
+    elif K_type == 1:
+        return_values['label'] = 'Design-time random actuators and gain'
+    elif K_type == 2:
+        return_values['label'] = 'Design-time greedy actuators and gain'
+    elif K_type == 3:
+        return_values['label'] = 'Run-time greedy actuators and gain'
+    elif K_type == 4:
+        return_values['label'] = 'Run-time greedy actuators and gain with state information'
 
-    if K_type == 1:  # Fixed random actuators, Fixed gain
-        nx = Sys['A']
-        B = list_to_matrix(random_selection(np.arange(0, nx), 5), nx)['matrix']
+    if K_type == 1:  # Design-time random actuators and gain
+        Sys['B'] = list_to_matrix(random_selection(np.arange(0, nx), 5), nx)['matrix']
         cost_solver = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
         K = cost_solver['K_t']
         if cost_solver['P_check'] != 1:
             warnings.warn('Gain does guarantee finite costs or feasible control')
-    if K_type == 2:  # Fixed actuator, Fixed gain
-        Sys = greedy_actuator_selection(Sys, Sys_in['S'], solve_constraints, recursion_lqr_1step)['System']
+            warning_trajectory = np.zeros(solve_constraints['T_sim']+1)
+    if K_type == 2:  # Design-time greedy best actuator, run-time gain
+        Sys = dc(greedy_actuator_selection(Sys, Sys['S'], solve_constraints, recursion_lqr_1step)['System'])
 
+    # Simulation loop
     for t in range(0, solve_constraints['T_sim']):
-        if K_type == 3:  # Run-time actuator set evaluation + gains
-            Sys = greedy_actuator_selection(Sys, Sys_in['S'], solve_constraints, recursion_lqr_1step)['System']
 
-        if K_type == 2 or K_type == 3:  # Fixed greedy actuator, Run-time gain evaluation
+        if K_type in [3, 4]:  # Run-time actuator and gains
+            if K_type == 4:  # Run-time state information update
+                Sys['X0'] = dc(x_trajectory[:, t])
+                Sys['cost_metric'] = metric1
+            Sys = greedy_actuator_selection(Sys, Sys_in['S'], solve_constraints, recursion_lqr_1step)['System']
+            warning_trajectory[t] = 0
+
+        if K_type in [2, 3, 4]:  # run-time gain evaluation
             cost_solver = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
             K = cost_solver['K_0']
             if cost_solver['P_check'] != 1:
                 warnings.warn('Gain does guarantee finite costs or feasible control')
+                warning_trajectory[t] = 0
+
+        sim_noise = {'w': dc(solve_constraints['W_sim'][t, :])}
+        try:
+            update_results = lqr_dynamics_cost_update(Sys, x_trajectory[:, t], K, sim_noise)
+        except NameError:
+            raise Exception('Check K')
+
+        x_trajectory[:, t+1] = dc(update_results['x1'])
+        u_trajectory[:, t] = dc(update_results['u0'])
+        J_trajectory[t+1] = dc(update_results['J0'])+J_trajectory[t]
+
+    return_values = return_values | {'x': x_trajectory, 'u': u_trajectory, 'J': J_trajectory, 'check': warning_trajectory, 'T_sim': solve_constraints['T_sim']}
+    return return_values
 
 
+#######################################################
 
 
+def plot_trajectory(data):
+    fig1 = plt.figure(tight_layout=True)
+    gs1 = GridSpec(3, 1, figure=fig1)
 
+    ax1 = fig1.add_subplot(gs1[0, 0])
+    for i in range(0, data['nx']):
+        ax1.stairs(data['x'][i, :])
+    ax1.set_title('States')
 
+    ax2 = fig1.add_subplot(gs1[1, 0])
+    for i in range(0, data['nx']):
+        ax2.stairs(data['u'][i, :])
+    ax2.set_title('Inputs')
+
+    ax3 = fig1.add_subplot(gs1[2, 0])
+    ax3.plot(np.arange(0, data['T_sim']+1), data['J'])
+    ax3.set_title('Cost')
+
+    plt.suptitle(data['label'])
+    plt.show()
+    return None
 
 #######################################################
 
