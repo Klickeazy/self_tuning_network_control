@@ -16,11 +16,13 @@ We compare the control costs and performance from run-time greedy actuator selec
 Dynamics: 50 node randomly generated well-connected ER network (open-loop unstable with eigenvalue magnitude 1.05)
 
 Actuator set subject to cardinality constraint - 5 actuators
+- Randomly selected and fixed at design-time, gain is evaluated at design-time
+- Greedy selection at design-time, gain is evaluated at design-time, the current state vector is considered rather than state distribution
 
 Initial state randomly sampled from scaled identity vector
 
 Additive disturbances randomly sampled from zero-mean normal distribution with scaled identity covariance matrix
 
-<img src="Plt1.png">
+<img src="images/Plt_traj_1.png">
 
-<img src="Plt2.png">
+[//]: # (<img src="images/Pl.png">)
