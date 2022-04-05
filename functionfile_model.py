@@ -1,10 +1,10 @@
 import numpy as np
 import networkx as netx
 from copy import deepcopy as dc
-import pickle
+# import pickle
 import warnings
 
-import matplotlib
+# import matplotlib
 import matplotlib.pyplot as plt
 # # import matplotlib.ticker as ticker
 from matplotlib.gridspec import GridSpec
@@ -463,7 +463,7 @@ def simulate_system(Sys_in, K_type=1, solve_constraints=None):
 
         if K_type in [2, 3, 4]:  # run-time gain evaluation
             cost_solver = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
-            K = cost_solver['K_0']
+            K = cost_solver['K_t']
             if cost_solver['P_check'] != 1:
                 warnings.warn('Gain does guarantee finite costs or feasible control')
                 warning_trajectory[t] = 0
