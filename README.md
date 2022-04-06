@@ -1,14 +1,11 @@
-# Self-tuning Network Control Architecture
+# Self-tuning Network Control Architecture: Results 1
 
-Code on self-tuning network control architecture.
-Optimize the control architecture through greedy selection to minimize control costs.
+We compare the control costs and performance from run-time greedy actuator selection and full-state feedback with current state information to a random set of design-time actuators and the corresponding fixed full-state feedback.
 
-Self-tuning architecture is based on improving the system model and the information used to select actuators.
-Under full-state-feedback for a known system model, this is a run-time selection of actuators based on the current state of the system.
+Dynamics: 50 node randomly generated well-connected ER network (open-loop unstable with eigenvalue magnitude 1.05)
 
 In the broad sense, this problem extends to the observer-based feedback problem where we base the actuator and sensor architecture at the current time step on the current estimated model of the system and work to improve the estimated model of the system over time as we accumulate more trajectory data.
 
 ## Organization of files and branches
 ### main_dev : Test branch for code
 ### Results 1 : Comparison of different control architecture - design time vs run time architecture design [here](Test 1.ipynb)
-
