@@ -553,6 +553,7 @@ def plot_trajectory_comparisons(data, fname =''):
         fname += str(data[k]['K_type'])
 
     c_list = ['C0', 'C1', 'C2', 'C3']
+    m_list = ['o', 'x', '+', '^']
 
     # Cost trajectories
     print('Cumulative cost comparison:')
@@ -560,14 +561,27 @@ def plot_trajectory_comparisons(data, fname =''):
         print("Type %d : %.2f" % (data[k]['K_type'], np.sum(data[k]['J'], dtype=float)))
 
     figJ = plt.figure(tight_layout=True)
-    gsJ = GridSpec(1, 1, figure=figJ)
-    axJ = figJ.add_subplot(gsJ[0, 0])
+    gsJ = GridSpec(2, 1, figure=figJ)
+    axJ1 = figJ.add_subplot(gsJ[0, 0])
+    axJ2 = axJ1.twinx()
+    axB = figJ.add_subplot(gsJ[1, 0], sharex=axJ1)
     for k in data:
-        axJ.semilogy(np.arange(0, data[k]['T_sim'] + 1), data[k]['J'], label='Type: ' + str(data[k]['K_type']))
-    axJ.set_ylabel(r'$J_t$')
-    axJ.legend()
+        data[k]['B'][data[k]['B'] == 0] = np.nan
+        axJ1.semilogy(np.arange(0, data[k]['T_sim'] + 1), data[k]['J'],  c=c_list[k-1], ls='-', alpha=0.5, label='Type: ' + str(data[k]['K_type']))
+        J_cumulative = dc(data[k]['J'])
+        for i in range(1, len(J_cumulative)):
+            J_cumulative[i] += J_cumulative[i-1]
+        axJ2.semilogy(np.arange(0, data[k]['T_sim'] + 1), J_cumulative, c=c_list[k - 1], ls=':', alpha=0.5, label='Type: ' + str(data[k]['K_type']))
+        for i in range(0, data[k]['nx']):
+            axB.scatter(np.arange(0, data[k]['T_sim']), data[k]['B'][i, :], c=c_list[k-1], marker=m_list[k-1], s=20, alpha=0.5, label='Type: ' + str(data[k]['K_type']) + '|S: ' + str(i))
 
-    plt.suptitle('Stage cost comparisons')
+    axJ1.set_ylabel(r'Stage cost at $t$')
+    axJ1.legend()
+    axJ1.set_title('Control costs')
+    axJ2.set_ylabel(r'Cumulative cost till $t$')
+
+    axB.set_ylabel(r'$B_{S,t}$')
+
     plt.savefig('images/Plt_J' + fname + '.pdf')
     plt.savefig('images/Plt_J' + fname + '.png')
     plt.savefig('images/Plt_J' + fname + '.svg')
