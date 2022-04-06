@@ -6,7 +6,6 @@ nx = 50
 p = 0.4
 
 A = 1.05*create_graph(nx, 'ER', p)['A']
-# B = list_to_matrix(random_selection(np.arange(0, nx), 5), nx)['matrix']
 S = 2
 X0 = 10*np.random.rand(nx)
 
@@ -28,7 +27,7 @@ Sys = system_package1(A, S_in=S, X0_in=X0, W_in=W)
 
 solve_constraints = solve_constraints_initializer(Sys)
 simulate_results = {}
-for i in [1, 4]:
+for i in [1, 2, 3, 4]:
     simulate_results[i] = simulate_system(Sys, i, solve_constraints)
     # plot_trajectory(simulate_results[i])
 plot_trajectory_comparisons(simulate_results)
