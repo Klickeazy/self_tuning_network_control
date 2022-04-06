@@ -189,7 +189,7 @@ def solve_constraints_initializer(Sys_in=None):
     P_accuracy = 10**(-4)
 
     # Time horizon of simulation/recursion
-    T_max = 5
+    T_max = 10
 
     if Sys_in is not None:
         Sys = dc(Sys_in)
