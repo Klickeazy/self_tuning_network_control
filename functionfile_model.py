@@ -16,7 +16,7 @@ from matplotlib.gridspec import GridSpec
 # matplotlib.rcParams['axes.labelsize'] = 12
 # matplotlib.rcParams['legend.fontsize'] = 10
 # matplotlib.rcParams['legend.title_fontsize'] = 10
-# matplotlib.rcParams['legend.framealpha'] = 0.5
+matplotlib.rcParams['legend.framealpha'] = 0.5
 # matplotlib.rcParams['lines.markersize'] = 5
 # # matplotlib.rcParams['image.cmap'] = 'Blues'
 matplotlib.rcParams['pdf.fonttype'] = 42
@@ -27,13 +27,16 @@ matplotlib.rcParams['savefig.bbox'] = 'tight'
 
 
 def system_package1(A_in=None, B_in=None, S_in=None, X0_in=None, W_in=None, Q_in=None, R_in=None, system_label=None):
+    # Function to package system as a dictionary
+    # Linear, Discrete-time system with x_{t+1} = Ax_{t} + Bu_{t} + w_{t}
+    # Core system package can be expanded to more complex cases like dynamic games, systems with multiplicative noise and expanded cost functions
 
     A = dc(A_in)
     nx = np.shape(A)[0]
 
     # S: cardinality constraint on the actuator set
     if S_in is None:
-        S = nx // 2
+        S = 0
     else:
         S = dc(S_in)
 
@@ -42,6 +45,7 @@ def system_package1(A_in=None, B_in=None, S_in=None, X0_in=None, W_in=None, Q_in
         B = list_to_matrix(random_selection(np.arange(1, nx+1), S, nx), nx)['matrix']
     nu = np.shape(B)[1]
 
+    #
     X0 = dc(X0_in)
     if X0 is None:
         metric_fn = metric0
@@ -65,12 +69,17 @@ def system_package1(A_in=None, B_in=None, S_in=None, X0_in=None, W_in=None, Q_in
     Q = dc(Q_in)
     if Q is None:
         Q = np.identity(nx)
+    elif not is_pos_def(Q):
+        raise Exception('Check cost matrix Q for positive definite condition')
+
     R = dc(R_in)
     if R is None:
         R = np.identity(nu)
+    elif not is_pos_def(R):
+        raise Exception('Check cost matrix R for positive definite condition')
 
     system_name = dc(system_label)
-
+    # Return dictionary
     system = {'A': A, 'B': B, 'S': S, 'X0': X0, 'W': W, 'Q': Q, 'R': R, 'name': system_name, 'cost_metric': metric_fn, 'sys_type': 1}
     return system
 
@@ -79,6 +88,8 @@ def system_package1(A_in=None, B_in=None, S_in=None, X0_in=None, W_in=None, Q_in
 
 
 def create_graph(nx_in, graph_type='cycle', p=None, self_loop=True):
+    # Created graphs are scaled for |eigmax(A)|=1 and checked to be well-connected (no disjoint graphs)
+    # Uses the networkx python package
     if graph_type not in ['cycle', 'path', 'ER', 'BA', 'rand']:
         raise Exception('Check network type')
 
@@ -107,6 +118,7 @@ def create_graph(nx_in, graph_type='cycle', p=None, self_loop=True):
             A = np.random.rand(nx, nx)
             G = netx.from_numpy_matrix(A)
 
+        # Check for well-connected network
         if netx.algorithms.components.is_connected(G):
             net_check = False
 
@@ -118,6 +130,7 @@ def create_graph(nx_in, graph_type='cycle', p=None, self_loop=True):
     if self_loop:
         Adj += np.identity(nx)
 
+    # Scaled for |eigmax(A)|=1
     e = np.max(np.abs(np.linalg.eigvals(Adj)))
     A = Adj / e
 
@@ -129,8 +142,9 @@ def create_graph(nx_in, graph_type='cycle', p=None, self_loop=True):
 
 
 def list_to_matrix(B_list, nx):
+    # Nodes labelled from 1 to nx
+    # Code accounts for matrix indices from 0 to n-1
     B_matrix = np.zeros((nx, nx))
-    # B_list = B_list.astype(np.int64)
     for i in range(0, len(B_list)):
         if B_list[i] > 0:
             B_matrix[B_list[i]-1, i] = 1
@@ -188,21 +202,25 @@ def solve_constraints_initializer(Sys_in=None):
     # Minimum convergence accuracy for cost matrix over iterations
     P_accuracy = 10**(-4)
 
-    # Time horizon of simulation/recursion
+    # Time horizon of recursion - typically less than simulation time
+    # Longer T_max => better convergence of cost to (near) steady-state,
     T_max = 50
 
+    # Simulation parameters for a given system
     if Sys_in is not None:
         Sys = dc(Sys_in)
         nx = np.shape(Sys['A'])[0]
 
-        # T_sim = Length of simulation
+        # Length of simulation
         T_sim = 100
 
         # Disturbances
+        # Expand this section in case of multiplicative noises
 
+        # Additive state disturbances
         W_sim = np.random.default_rng().multivariate_normal(np.zeros(nx), Sys['W'], T_sim)
 
-        # Initial state
+        # Initial state for simulation if none provided
         if Sys['X0'] is None:
             x0 = 10 * np.random.rand(nx, 1)
         elif np.ndim(Sys['X0']) == 1:
@@ -222,7 +240,7 @@ def solve_constraints_initializer(Sys_in=None):
 
 #####################################
 
-
+# Check for convergence of two matrices for a given accuracy using numpy allclose or matrix norm methods
 def matrix_convergence_check(A, B, accuracy, check_type=None):
     np_norm_methods = ['inf', 'fro', 2, None]
     if check_type not in np_norm_methods:
@@ -236,7 +254,7 @@ def matrix_convergence_check(A, B, accuracy, check_type=None):
 
 #####################################
 
-
+# Check if matrix A is symmetric and then positive definite by attempting to form the cholesky decomposition of A
 def is_pos_def(A):
     if np.array_equal(A, A.T):
         try:
@@ -251,7 +269,8 @@ def is_pos_def(A):
 
 #####################################
 
-
+# Cost function models - can be expanded for more cost models
+# 1-step Cost recursion for LQR
 def recursion_lqr_1step(P_t1, Sys_in):
     A = Sys_in['A']
     B = Sys_in['B']
@@ -268,13 +287,12 @@ def recursion_lqr_1step(P_t1, Sys_in):
 
 #####################################
 
+# Recursive evaluation of cost function
+# For finite horizon problems, check maximum cost metric value and number of iterations in solve constraints
+# Requires testing of commented code for matrix convergence under infinite horizon
+
 
 def solve_cost_recursion(sys_in=None, solve_constraints=solve_constraints_initializer(), cost_fn=recursion_lqr_1step):
-
-    # if solve_constraints_in is None:
-    #     solve_constraints = solve_constraints_initializer()
-    # else:
-    #     solve_constraints = dc(solve_constraints_in)
 
     Sys = dc(sys_in)
 
@@ -308,19 +326,19 @@ def solve_cost_recursion(sys_in=None, solve_constraints=solve_constraints_initia
             # Exceeding design cost bounds
             P_check = 2
             break
-        elif solve_constraints['J_max'] is None and matrix_convergence_check(P_t, P, solve_constraints['P_accuracy'], None):
-            # Convergence of cost function
-            P_check = 1
-            break
+        # elif solve_constraints['J_max'] is None and matrix_convergence_check(P_t, P, solve_constraints['P_accuracy'], None):
+        #     # Convergence of cost function
+        #     P_check = 1
+        #     break
 
         if solve_constraints['T_max'] < t_steps:
             # Exceeded computation steps - success for finite horizon, fail for infinite horizon
             if solve_constraints['J_max'] is not None:  # Success for bounded costs over finite horizon
                 P_check = 1
                 break
-            else:  # Fail for convergence under infinite horizon
-                P_check = 2
-                break
+            # else:  # Fail for convergence under infinite horizon
+            #     P_check = 2
+            #     break
 
         if is_pos_def(P_t) < 0:
             # Sanity check for cost matrix with negative eigenvalues - this should not happen
@@ -343,7 +361,8 @@ def solve_cost_recursion(sys_in=None, solve_constraints=solve_constraints_initia
 
 #####################################
 
-
+# Greedy actuator selection
+# Pick the feasible actuator with the lowest control cost or the infeasible actuator that lasts the longest time
 def greedy_actuator_selection(Sys_in, S=None, solve_constraints=solve_constraints_initializer(), cost_fn=recursion_lqr_1step):
     #  Select actuators for Sys under a cardinality constraint K
     Sys = dc(Sys_in)
@@ -396,7 +415,9 @@ def greedy_actuator_selection(Sys_in, S=None, solve_constraints=solve_constraint
 
 #######################################################
 
-
+# Simulation update of stage costs given system, current state, feedback gain and realizations of any noise
+# Section can be extended to more complex cases
+# LQR System update with additive noise
 def lqr_dynamics_cost_update(Sys, x0, K, sim_noise=None):
 
     u0 = K@x0
@@ -404,9 +425,6 @@ def lqr_dynamics_cost_update(Sys, x0, K, sim_noise=None):
         w = np.zeros(np.shape(Sys['A'])[0])
     else:
         w = dc(sim_noise['w'])
-    # print(np.shape(Sys['A']@x0))
-    # print(np.shape(Sys['B']@u0))
-    # print(np.shape(w))
     x1 = Sys['A']@x0 + Sys['B']@u0 + w
 
     J0 = x0.T@Sys['Q']@x0 + u0@Sys['R']@u0
@@ -416,7 +434,7 @@ def lqr_dynamics_cost_update(Sys, x0, K, sim_noise=None):
 
 #######################################################
 
-
+# Simulation of a system for different types of feedback gains
 def simulate_system(Sys_in, K_type=1, solve_constraints=None):
 
     return_values = {'K_type': K_type}
@@ -434,45 +452,39 @@ def simulate_system(Sys_in, K_type=1, solve_constraints=None):
     u_trajectory = np.zeros((nx, solve_constraints['T_sim']))
     B_trajectory = np.zeros((nx, solve_constraints['T_sim']))
     J_trajectory = np.zeros(solve_constraints['T_sim']+1)
+
     warning_trajectory = np.ones(solve_constraints['T_sim']+1)
     # records 1 for no warnings or 0 if gain/actuator set is not feasible/bounded
 
-    if K_type not in [1, 2, 3, 4]:
+    if K_type not in [1, 2]:
         raise Exception('Check gain type/test model')
     elif K_type == 1:
         return_values['label'] = 'Design-time random $B_S$, $K$'
     elif K_type == 2:
-        return_values['label'] = 'Design-time greedy $B_S$, $K$'
-    elif K_type == 3:
-        return_values['label'] = 'Design-time greedy $B_S$, run-time $K_t$ with $x_t$'
-    elif K_type == 4:
         return_values['label'] = 'Run-time greedy $B_{S,t}$, $K_t$ with $x_t$'
 
     print('Type ' + str(K_type) + ': ' + return_values['label'])
 
-    if K_type == 1:  # Design-time random actuators and gain
+    if K_type in [1]:  # Design-time random actuators and gain
+        # Design-time random actuators
         Sys['B'] = list_to_matrix(random_selection(np.arange(1, nx+1), Sys['S'], nx), nx)['matrix']
+        # Design-time gain
         cost_solver = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
         K = cost_solver['K_t']
         if cost_solver['P_check'] != 1:
             warnings.warn('Gain does not guarantee finite costs or feasible control')
             warning_trajectory = np.zeros(solve_constraints['T_sim']+1)
-    if K_type in [2, 3]:  # Design-time greedy best actuator, run-time gain
-        Sys = dc(greedy_actuator_selection(Sys, Sys['S'], solve_constraints, recursion_lqr_1step)['System'])
-        if K_type == 2:
-            cost_solver = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
-            K = dc(cost_solver['K_t'])
 
     # Simulation loop
     for t in range(0, solve_constraints['T_sim']):
         print('t: '+str(t) + '/' + str(solve_constraints['T_sim']), end='\r')
 
-        if K_type in [3, 4]:
-            if K_type in [3, 4]:  # Use current state information
-                Sys['X0'] = dc(x_trajectory[:, t])
-                Sys['cost_metric'] = metric1
-            if K_type in [4]:  # Run-time greedy actuators
-                Sys = dc(greedy_actuator_selection(Sys, Sys['S'], solve_constraints, recursion_lqr_1step)['System'])
+        if K_type in [2]:
+            # Use current state information
+            Sys['X0'] = dc(x_trajectory[:, t])
+            Sys['cost_metric'] = metric1
+            # Run-time greedy actuators
+            Sys = dc(greedy_actuator_selection(Sys, Sys['S'], solve_constraints, recursion_lqr_1step)['System'])
             # Run-time gain matrix
             cost_solver = solve_cost_recursion(Sys, solve_constraints, recursion_lqr_1step)
             K = dc(cost_solver['K_t'])
@@ -490,20 +502,19 @@ def simulate_system(Sys_in, K_type=1, solve_constraints=None):
         x_trajectory[:, t+1] = dc(update_results['x1'])
         u_trajectory[:, t] = dc(update_results['u0'])
         J_trajectory[t] = dc(update_results['J0'])
-        # if t > 0:
-        #     J_trajectory[t] += J_trajectory[t-1]
         B_trajectory[:, t] = dc(matrix_to_list(Sys['B'])['list'])
-    J_trajectory[-1] = (x_trajectory[:, -1].T @ Sys['Q'] @ x_trajectory[:, -1]) #+ J_trajectory[-2]
+
+    J_trajectory[-1] = (x_trajectory[:, -1].T @ Sys['Q'] @ x_trajectory[:, -1])
     return_values = return_values | {'x': x_trajectory, 'u': u_trajectory, 'B': B_trajectory, 'J': J_trajectory, 'check': warning_trajectory, 'T_sim': solve_constraints['T_sim']}
     print('      - Simulation complete')
-    # if not (warning_trajectory == 1).all():  # check if any infeasible actuators/gains
-    #     print('Warning: infeasible architecture/gains - relax constraints')
+
     return return_values
 
 
 #######################################################
 
-
+# Plot state, input trajectories and actuator set changes with time
+# Called by comparison platter
 def plot_trajectory(data, fname_path=''):
     fname = fname_path + 'Traj'
     fig1 = plt.figure(tight_layout=True)
@@ -546,7 +557,7 @@ def plot_trajectory(data, fname_path=''):
 
 #######################################################
 
-
+# Compares cost (stage and cumulative) and actuator sets
 def plot_trajectory_comparisons(data, fname_path=''):
 
     # Input trajectory data for display
@@ -576,14 +587,21 @@ def plot_trajectory_comparisons(data, fname_path=''):
             J_cumulative[i] += J_cumulative[i-1]
         axJ2.semilogy(np.arange(0, data[k]['T_sim'] + 1), J_cumulative, c=c_list[k - 1], ls='-.', alpha=0.5, label='Type: ' + str(data[k]['K_type']))
         for i in range(0, data[k]['nx']):
-            axB.scatter(np.arange(0, data[k]['T_sim']), data[k]['B'][i, :], c=c_list[k-1], marker=m_list[k-1], s=20, alpha=0.5, label='Type: ' + str(data[k]['K_type']) + '|S: ' + str(i))
+            # axB.scatter(np.arange(0, data[k]['T_sim']), data[k]['B'][i, :], c=c_list[k-1], marker=m_list[k-1], s=20, alpha=0.5, label='Type: ' + str(data[k]['K_type']) + '|S: ' + str(i))
+            axB.plot(np.arange(0, data[k]['T_sim']), data[k]['B'][i, :], c=c_list[k - 1], alpha=0.5, marker=m_list[k], label='Type: ' + str(data[k]['K_type']) + '|S: ' + str(i))
 
     axJ1.set_ylabel(r'Stage cost at $t$')
-    axJ1.legend()
+    axJ1.legend(loc='upper center', ncol=2)
     axJ1.set_title('Control costs')
     axJ2.set_ylabel(r'Cumulative cost till $t$')
+    axJ2_ylim = axJ2.get_ylim()
+    axJ2.set_ylim(top=1.5*axJ2_ylim[1])
 
+    axB.set_title('Actuator positions')
     axB.set_ylabel(r'$B_{S,t}$')
+    axB_ylim = axB.get_ylim()
+    axB.set_ylim(axB_ylim[0]-5, axB_ylim[1]+5)
+    axB.set_xlabel('t')
 
     plt.savefig(fname + '.pdf')
     plt.savefig(fname + '.png')
