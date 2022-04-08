@@ -189,7 +189,7 @@ def solve_constraints_initializer(Sys_in=None):
     P_accuracy = 10**(-4)
 
     # Time horizon of simulation/recursion
-    T_max = 10
+    T_max = 50
 
     if Sys_in is not None:
         Sys = dc(Sys_in)
@@ -504,7 +504,8 @@ def simulate_system(Sys_in, K_type=1, solve_constraints=None):
 #######################################################
 
 
-def plot_trajectory(data):
+def plot_trajectory(data, fname_path=''):
+    fname = fname_path + 'Traj'
     fig1 = plt.figure(tight_layout=True)
     gs1 = GridSpec(3, 1, figure=fig1)
 
@@ -533,11 +534,12 @@ def plot_trajectory(data):
     # ax4 = fig1.add_subplot(gs1[3, 0])
     # ax4.plot(np.arange(0, data['T_sim']+1), data['J'])
     # ax4.set_title('Cost')
+    fname += str(data['K_type'])
 
     plt.suptitle(r'Type $' + str(data['K_type']) + '$: ' + data['label'])
-    plt.savefig('images/Plt_traj_' + str(data['K_type']) + '.pdf')
-    plt.savefig('images/Plt_traj_' + str(data['K_type']) + '.png')
-    plt.savefig('images/Plt_traj_' + str(data['K_type']) + '.svg')
+    plt.savefig(fname + '.pdf')
+    plt.savefig(fname + '.png')
+    plt.savefig(fname + '.svg')
 
     plt.show()
     return None
@@ -545,11 +547,12 @@ def plot_trajectory(data):
 #######################################################
 
 
-def plot_trajectory_comparisons(data, fname =''):
+def plot_trajectory_comparisons(data, fname_path=''):
 
     # Input trajectory data for display
+    fname = fname_path + 'JB'
     for k in data:
-        plot_trajectory(data[k])
+        plot_trajectory(data[k], fname_path)
         fname += str(data[k]['K_type'])
 
     c_list = ['C0', 'C1', 'C2', 'C3']
@@ -571,7 +574,7 @@ def plot_trajectory_comparisons(data, fname =''):
         J_cumulative = dc(data[k]['J'])
         for i in range(1, len(J_cumulative)):
             J_cumulative[i] += J_cumulative[i-1]
-        axJ2.semilogy(np.arange(0, data[k]['T_sim'] + 1), J_cumulative, c=c_list[k - 1], ls=':', alpha=0.5, label='Type: ' + str(data[k]['K_type']))
+        axJ2.semilogy(np.arange(0, data[k]['T_sim'] + 1), J_cumulative, c=c_list[k - 1], ls='-.', alpha=0.5, label='Type: ' + str(data[k]['K_type']))
         for i in range(0, data[k]['nx']):
             axB.scatter(np.arange(0, data[k]['T_sim']), data[k]['B'][i, :], c=c_list[k-1], marker=m_list[k-1], s=20, alpha=0.5, label='Type: ' + str(data[k]['K_type']) + '|S: ' + str(i))
 
@@ -582,9 +585,9 @@ def plot_trajectory_comparisons(data, fname =''):
 
     axB.set_ylabel(r'$B_{S,t}$')
 
-    plt.savefig('images/Plt_J' + fname + '.pdf')
-    plt.savefig('images/Plt_J' + fname + '.png')
-    plt.savefig('images/Plt_J' + fname + '.svg')
+    plt.savefig(fname + '.pdf')
+    plt.savefig(fname + '.png')
+    plt.savefig(fname + '.svg')
     plt.show()
 
 #######################################################

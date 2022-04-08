@@ -7,13 +7,11 @@ Dynamics: 50 node randomly generated well-connected ER network (open-loop unstab
 In the broad sense, this problem extends to the observer-based feedback problem where we base the actuator and sensor architecture at the current time step on the current estimated model of the system and work to improve the estimated model of the system over time as we accumulate more trajectory data.
 
 ## Organization of files and branches
-<<<<<<< Updated upstream
-### main_dev : Test branch for code
-### Results 1 : Comparison of different control architecture - design time vs run time architecture design [here](Test 1.ipynb)
-=======
 ### main_dev
 - Test branch for code
 ### Results 1
-- Comparison of different greedy control architecture - design time vs run time architecture design and the effect of system information
+- Comparison of design-time vs run-time greedy control architecture - Effect of system information
 - Check File [here](Test 1.ipynb) or ../Test 1.ipynb
->>>>>>> Stashed changes
+### Results 2
+- Comparison of design-time vs run-time greedy control architecture - targeted disturbances
+- Check File [here](Test 2.ipynb) or ../Test 2.ipynb
