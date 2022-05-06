@@ -601,7 +601,7 @@ def plot_trajectory_comparisons(data, fname_path=''):
     axB.set_ylabel(r'$B_{S,t}$')
     axB_ylim = axB.get_ylim()
     axB.set_ylim(axB_ylim[0]-5, axB_ylim[1]+5)
-    axB.set_xlabel('t')
+    axB.set_xlabel('time (t)')
 
     plt.savefig(fname + '.pdf')
     plt.savefig(fname + '.png')
