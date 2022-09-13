@@ -5,11 +5,11 @@ We compare the control costs and performance from run-time greedy actuator selec
 Dynamics: 50 node randomly generated well-connected ER network (open-loop unstable with eigenvalue magnitude 1.05)
 
 ## Python
-Use [here](work_env.yaml) to install a conda environment with all relevant packages for the code
+Use [work_env](work_env.yaml) to install a conda environment with all relevant packages for the code
 
 ## File Organization
-- [here](Test_Notebook.ipynb) is the jupyter notebook of the numerical analysis
-- [here](functionfile_model.py) contains the functions used in the numerical analysis
+- [Test_Notebook](Test_Notebook.ipynb) is the jupyter notebook of the numerical analysis
+- [functionfile_model](functionfile_model.py) contains the functions used in the numerical analysis
 
 
 
