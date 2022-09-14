@@ -459,9 +459,9 @@ def simulate_system(Sys_in, K_type=1, solve_constraints=None):
     if K_type not in [1, 2]:
         raise Exception('Check gain type/test model')
     elif K_type == 1:
-        return_values['label'] = 'Design-time random $B_S$, $K$'
+        return_values['label'] = 'Design-time Fixed Architecture'
     elif K_type == 2:
-        return_values['label'] = 'Run-time greedy $B_{S,t}$, $K_t$ with $x_t$'
+        return_values['label'] = 'Run-time Self-tuning Architecture'
 
     print('Type ' + str(K_type) + ': ' + return_values['label'])
 
@@ -477,7 +477,7 @@ def simulate_system(Sys_in, K_type=1, solve_constraints=None):
 
     # Simulation loop
     for t in range(0, solve_constraints['T_sim']):
-        print('t: '+str(t) + '/' + str(solve_constraints['T_sim']), end='\r')
+        print('Time step (t): '+str(t) + '/' + str(solve_constraints['T_sim']), end='\r')
 
         if K_type in [2]:
             # Use current state information
@@ -514,7 +514,7 @@ def simulate_system(Sys_in, K_type=1, solve_constraints=None):
 #######################################################
 
 # Plot state, input trajectories and actuator set changes with time
-# Called by comparison platter
+# Called by comparison plotter
 def plot_trajectory(data, fname_path=''):
     fname = fname_path + 'Traj'
     fig1 = plt.figure(tight_layout=True)
@@ -572,7 +572,8 @@ def plot_trajectory_comparisons(data, fname_path=''):
     # Cost trajectories
     print('Cumulative cost comparison:')
     for k in data:
-        print("Type %d : %.2f" % (data[k]['K_type'], np.sum(data[k]['J'], dtype=float)))
+        print("Type %d cost: %.2f" % (data[k]['K_type'], np.sum(data[k]['J'], dtype=float)))
+    print("Type 2 %s cost improvement: %.2f %% of Type 1 %s" % (data[2]['label'], (np.sum(data[1]['J'])-np.sum(data[2]['J']))*100/np.sum(data[1]['J']), data[1]['label']))
 
     figJ = plt.figure(tight_layout=True)
     gsJ = GridSpec(2, 1, figure=figJ)
@@ -607,6 +608,76 @@ def plot_trajectory_comparisons(data, fname_path=''):
     plt.savefig(fname + '.png')
     plt.savefig(fname + '.svg')
     plt.show()
+
+#######################################################
+
+# Compare trajectories for two systems
+def plot_trajectory_comparisons_2(data, fname_path=''):
+    
+    figure_trajectory = plt.figure(tight_layout=True)
+    gs_trajectory = GridSpec(3, 2, figure=figure_trajectory)
+    
+    ax1_1 = figure_trajectory.add_subplot(gs_trajectory[0, 0])
+    ax1_2 = figure_trajectory.add_subplot(gs_trajectory[0, 1], sharey=ax1_1)
+    
+    ax2_1 = figure_trajectory.add_subplot(gs_trajectory[1, 0], sharex=ax1_1)
+    ax2_2 = figure_trajectory.add_subplot(gs_trajectory[1, 1], sharey=ax2_1, sharex=ax1_2)
+    
+    ax3_1 = figure_trajectory.add_subplot(gs_trajectory[2, 0], sharex=ax1_1)
+    ax3_2 = figure_trajectory.add_subplot(gs_trajectory[2, 1], sharey=ax3_1, sharex=ax1_2)
+
+    # Input trajectory data for display
+    fname = fname_path + 'trajectory'
+    for k in data:
+        fname += str(data[k]['K_type'])
+
+    
+    for i in range(0, data[1]['nx']):
+        ax1_1.stairs(data[1]['x'][i, :])
+    ax1_1.set_title('Type '+str(data[1]['K_type'])+'\n'+data[1]['label'])
+    ax1_1.set_ylabel('States\n'+r'$x_t$')
+    
+    for i in range(0, data[2]['nx']):
+        ax1_2.stairs(data[2]['x'][i, :])
+    ax1_2.set_title('Type '+str(data[2]['K_type'])+'\n'+data[2]['label'])
+    # ax1_2.set_ylabel(r'$x_t$')
+    
+    
+    data[1]['u'][data[1]['u'] == 0] = np.nan
+    for i in range(0, data[1]['nx']):
+        ax2_1.stairs(data[1]['u'][i, :])
+    # ax2_1.set_title('Inputs')
+    ax2_1.set_ylabel('Inputs\n'+r'$u_t$')
+    
+    data[2]['u'][data[2]['u'] == 0] = np.nan
+    for i in range(0, data[2]['nx']):
+        ax2_2.stairs(data[2]['u'][i, :])
+    # ax2_2.set_title('Inputs')
+    # ax2_2.set_ylabel(r'Inputs\n$u_t$')
+    
+    
+    data[1]['B'][data[1]['B'] == 0] = np.nan
+    for i in range(0, data[1]['nx']):
+        ax3_1.scatter(np.arange(0, data[1]['T_sim']), data[1]['B'][i, :], s=2, alpha=0.5)
+    # ax3_1.set_title('Actuator positions')
+    ax3_1.set_ylabel('Actuator positions\n'+r'$B_{S,t}$')
+    ax3_1.set_xlabel('Time (t)')
+    ax3_1.set_ylim(-5, data[1]['nx']+5)
+    
+    data[2]['B'][data[2]['B'] == 0] = np.nan
+    for i in range(0, data[2]['nx']):
+        ax3_2.scatter(np.arange(0, data[2]['T_sim']), data[2]['B'][i, :], s=2, alpha=0.5)
+    # ax3_2.set_title('Actuator positions')
+    # ax3_2.set_ylabel(r'$B_{S,t}$')
+    # ax3_2.set_xlabel('t')
+    ax3_2.set_ylim(-5, data[2]['nx']+5)
+    
+    plt.savefig(fname + '.pdf')
+    plt.savefig(fname + '.png')
+    plt.savefig(fname + '.svg')
+    plt.show()
+    
+
 
 #######################################################
 
