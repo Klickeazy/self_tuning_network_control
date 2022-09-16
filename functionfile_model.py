@@ -27,9 +27,13 @@ matplotlib.rcParams['savefig.bbox'] = 'tight'
 
 
 def system_package1(A_in=None, B_in=None, S_in=None, X0_in=None, W_in=None, Q_in=None, R_in=None, system_label=None):
-    # Function to package system as a dictionary
-    # Linear, Discrete-time system with x_{t+1} = Ax_{t} + Bu_{t} + w_{t}
-    # Core system package can be expanded to more complex cases like dynamic games, systems with multiplicative noise and expanded cost functions
+    """
+    Function to package system as a dictionary
+    Linear, Discrete-time system with x_{t+1} = Ax_{t} + Bu_{t} + w_{t}
+    Core system package with modular design expandable to more complex system models like dynamic games, systems with multiplicative noise and corresponding cost functions
+
+    Parameters: A - dynamics matrix, B - actuator set, S - cardinality constraint to randomize actuator set if required
+    """
 
     A = dc(A_in)
     nx = np.shape(A)[0]
