@@ -208,7 +208,7 @@ def solve_constraints_initializer(Sys_in=None):
 
     # Time horizon of recursion - typically less than simulation time
     # Longer T_max => better convergence of cost to (near) steady-state,
-    T_max = 50
+    T_max = 20
 
     # Simulation parameters for a given system
     if Sys_in is not None:
